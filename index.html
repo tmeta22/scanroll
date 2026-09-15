@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>ScanRoll</title>
+
+<meta name="theme-color" content="#14171A" />
+<meta name="description" content="Live multi-QR scanning with duplicate detection." />
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json" />
+
+<!-- iOS home screen support -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="ScanRoll" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Camera layer -->
+  <div id="camera-stage">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="overlay"></canvas>
+
+    <div id="reticle" aria-hidden="true">
+      <span class="corner tl"></span>
+      <span class="corner tr"></span>
+      <span class="corner bl"></span>
+      <span class="corner br"></span>
+    </div>
+
+    <div id="permission-state" class="state-panel" hidden>
+      <p id="permission-message">Camera access is needed to scan codes.</p>
+      <button id="retry-camera" class="btn btn-accent">Allow camera</button>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <header id="topbar">
+    <div id="count-badge">
+      <span id="count-number">0</span>
+      <span id="count-label">scanned</span>
+    </div>
+    <div id="topbar-actions">
+      <button id="torch-btn" class="icon-btn" title="Toggle flashlight" hidden>
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M7 2h10l-2 8h4l-9 12 2-9H8l-1-11z" fill="currentColor"/></svg>
+      </button>
+      <button id="clear-btn" class="icon-btn" title="Clear all">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Toast for new/duplicate scans -->
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Bottom sheet -->
+  <section id="sheet" class="collapsed">
+    <div id="sheet-handle">
+      <div id="drag-grip"></div>
+      <div id="sheet-heading">
+        <h1 id="sheet-title">Scanned codes</h1>
+        <div id="sheet-controls">
+          <button id="export-btn" class="btn btn-ghost" disabled>Export</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="export-menu" hidden>
+      <button data-format="csv">Export as CSV</button>
+      <button data-format="json">Export as JSON</button>
+      <button data-format="txt">Export as plain text</button>
+    </div>
+
+    <div id="empty-state">
+      <p>No codes scanned yet.</p>
+      <p class="muted">Point the camera at a QR code — unique reads are saved here automatically.</p>
+    </div>
+
+    <ul id="scan-list"></ul>
+  </section>
+
+</div>
+
+<script src="vendor/jsQR.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
