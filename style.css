@@ -27,6 +27,11 @@
 
 * { box-sizing: border-box; }
 
+/* Author rules like `.state-panel { display: flex }` override the UA
+   `[hidden] { display: none }` rule, so `el.hidden = true` would leave
+   those elements on screen. Restore the attribute's meaning globally. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
