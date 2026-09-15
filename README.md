@@ -20,16 +20,27 @@ Camera access (`getUserMedia`) and installable PWAs both require **HTTPS**
 from a local file. You need to serve these files from a real HTTPS URL.
 The easiest free option is GitHub Pages.
 
-## Deploy to GitHub Pages (free, ~2 minutes)
+## Deploy to GitHub Pages (free)
 
-1. Create a new GitHub repository (public or private both work).
-2. Upload all the files in this folder to the repo root — `index.html`,
-   `style.css`, `app.js`, `manifest.json`, `sw.js`, the `vendor/` folder,
-   and the `icons/` folder.
-3. In the repo, go to **Settings → Pages**.
-4. Under "Build and deployment", set **Source** to `Deploy from a branch`,
+This repo is already set up to deploy. The live site is:
+
+**https://tmeta22.github.io/scanroll/**
+
+Deployment is automatic: GitHub Pages is configured to publish from the
+`main` branch, `/ (root)` folder, so **every push to `main` redeploys the
+site**. The `.nojekyll` file at the repo root disables Jekyll processing so
+every file (including `vendor/`) is served byte-for-byte. A build usually
+takes about a minute — watch it under the repo's **Actions → pages-build-deployment**.
+
+To replicate this for your own fork:
+
+1. Push the files to a GitHub repository — `index.html`, `style.css`,
+   `app.js`, `manifest.json`, `sw.js`, `.nojekyll`, the `vendor/` folder,
+   and the `icons/` folder, all at the repo root.
+2. In the repo, go to **Settings → Pages**.
+3. Under "Build and deployment", set **Source** to `Deploy from a branch`,
    branch `main`, folder `/ (root)`. Save.
-5. GitHub gives you a URL like `https://yourname.github.io/your-repo/`.
+4. GitHub gives you a URL like `https://yourname.github.io/your-repo/`.
    Wait ~1 minute for the first deploy.
 
 ## Install it on your phone
