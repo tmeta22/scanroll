@@ -1,4 +1,4 @@
-const CACHE_NAME = "scanroll-v2";
+const CACHE_NAME = "scanroll-v3";
 const ASSETS = [
   "./",
   "./index.html",

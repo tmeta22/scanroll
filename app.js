@@ -21,6 +21,18 @@
   const emptyState = document.getElementById("empty-state");
   const exportBtn = document.getElementById("export-btn");
   const exportMenu = document.getElementById("export-menu");
+  const sheetToolbar = document.getElementById("sheet-toolbar");
+  const searchInput = document.getElementById("search-input");
+  const sortSelect = document.getElementById("sort-select");
+  const noResults = document.getElementById("no-results");
+  const addBtn = document.getElementById("add-btn");
+  const copyAllBtn = document.getElementById("copy-all-btn");
+
+  const modal = document.getElementById("modal");
+  const modalTitle = document.getElementById("modal-title");
+  const modalInput = document.getElementById("modal-input");
+  const modalCancel = document.getElementById("modal-cancel");
+  const modalSave = document.getElementById("modal-save");
 
   // ---------- State ----------
   /** @type {Map<string, {content: string, firstSeen: number, lastSeen: number, count: number}>} */
@@ -35,6 +47,11 @@
   let rafId = null;
   let lastDetectTime = 0;
   const DETECT_INTERVAL = 90; // ms, ~11fps cap for battery/perf
+
+  let query = "";
+  let sortMode = "recent";
+  const collapsedTypes = new Set();
+  const STORAGE_KEY = "scanroll.session.v1";
 
   // ---------- Utilities ----------
   function vibrate(pattern) {
@@ -61,6 +78,102 @@
     showToast._t = setTimeout(() => {
       toast.classList.remove("show");
     }, 1100);
+  }
+
+  // ---------- Content types ----------
+  // Order here is the order groups appear in the results list.
+  const TYPES = [
+    { id: "url", label: "Links" },
+    { id: "email", label: "Emails" },
+    { id: "phone", label: "Phone numbers" },
+    { id: "sms", label: "Messages" },
+    { id: "wifi", label: "WiFi networks" },
+    { id: "vcard", label: "Contacts" },
+    { id: "geo", label: "Locations" },
+    { id: "json", label: "JSON" },
+    { id: "numeric", label: "Numeric codes" },
+    { id: "text", label: "Text" },
+  ];
+  const TYPE_LABEL = Object.fromEntries(TYPES.map((t) => [t.id, t.label]));
+  const TYPE_ORDER = TYPES.map((t) => t.id);
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  function isJson(s) {
+    if (!s.startsWith("{") && !s.startsWith("[")) return false;
+    try {
+      JSON.parse(s);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function detectType(content) {
+    const s = content.trim();
+    if (/^WIFI:/i.test(s)) return "wifi";
+    if (/^BEGIN:VCARD/i.test(s)) return "vcard";
+    if (/^geo:/i.test(s)) return "geo";
+    if (/^(https?:\/\/|www\.)\S+$/i.test(s)) return "url";
+    if (/^mailto:/i.test(s) || EMAIL_RE.test(s)) return "email";
+    if (/^(smsto:|sms:|mms:)/i.test(s)) return "sms";
+    if (/^tel:/i.test(s)) return "phone";
+    if (isJson(s)) return "json";
+    if (/^\d+$/.test(s)) return "numeric";
+    if (/^\+?[\d(][\d\s().-]{5,}$/.test(s) && (s.match(/\d/g) || []).length >= 7) return "phone";
+    return "text";
+  }
+
+  // ---------- Session persistence ----------
+  function loadSession() {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      return; // storage unavailable (private mode)
+    }
+    if (!raw) return;
+
+    try {
+      const data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.entries)) return;
+      data.entries.forEach((e) => {
+        if (!e || typeof e.content !== "string" || !e.content) return;
+        scans.set(e.content, {
+          content: e.content,
+          firstSeen: e.firstSeen || Date.now(),
+          lastSeen: e.lastSeen || e.firstSeen || Date.now(),
+          count: e.count || 1,
+          type: detectType(e.content),
+        });
+      });
+      order = [...scans.keys()].sort((a, b) => scans.get(b).firstSeen - scans.get(a).firstSeen);
+    } catch (e) {
+      // corrupt payload: start clean rather than half-loading it
+      scans.clear();
+      order = [];
+    }
+  }
+
+  function saveSession() {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          v: 1,
+          entries: order.map((key) => {
+            const e = scans.get(key);
+            return {
+              content: e.content,
+              firstSeen: e.firstSeen,
+              lastSeen: e.lastSeen,
+              count: e.count,
+            };
+          }),
+        })
+      );
+    } catch (e) {
+      // over quota or storage blocked; the session just stays in-memory
+    }
   }
 
   // ---------- Camera setup ----------
@@ -222,16 +335,18 @@
         showToast("Already scanned", "dup");
         flashRow(content);
         renderMeta(content);
+        saveSession();
       }
       return;
     }
 
-    const entry = { content, firstSeen: now, lastSeen: now, count: 1, lastToast: now };
+    const entry = { content, firstSeen: now, lastSeen: now, count: 1, lastToast: now, type: detectType(content) };
     scans.set(content, entry);
     order.unshift(content);
 
     vibrate([30, 40, 30]);
     showToast("New code saved", "new");
+    saveSession();
     renderList();
     openPeekIfCollapsed();
   }
@@ -251,47 +366,164 @@
   }
 
   // ---------- List rendering ----------
+  const ICON_COPY = '<svg viewBox="0 0 24 24" width="18" height="18"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>';
+  const ICON_EDIT = '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 20h4L18 10l-4-4L4 16v4z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/><path d="M14 6l4 4" stroke="currentColor" stroke-width="1.6"/></svg>';
+  const ICON_DELETE = '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ICON_CHEVRON = '<svg class="chev" viewBox="0 0 24 24" width="14" height="14"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function groupEntries() {
+    const q = query.trim().toLowerCase();
+    const buckets = new Map();
+
+    order.forEach((key) => {
+      const entry = scans.get(key);
+      if (!entry) return;
+      if (q && !entry.content.toLowerCase().includes(q)) return;
+      if (!buckets.has(entry.type)) buckets.set(entry.type, []);
+      buckets.get(entry.type).push(entry);
+    });
+
+    const groups = [];
+    TYPE_ORDER.forEach((type) => {
+      const items = buckets.get(type);
+      if (!items || !items.length) return;
+      groups.push({ type, label: TYPE_LABEL[type], items: sortEntries(items) });
+    });
+    return groups;
+  }
+
+  function sortEntries(items) {
+    const arr = [...items];
+    if (sortMode === "count") {
+      arr.sort((a, b) => b.count - a.count || b.firstSeen - a.firstSeen);
+    } else if (sortMode === "az") {
+      arr.sort((a, b) =>
+        a.content.localeCompare(b.content, undefined, { numeric: true, sensitivity: "base" })
+      );
+    } else {
+      arr.sort((a, b) => b.firstSeen - a.firstSeen);
+    }
+    return arr;
+  }
+
+  // Scan order number, newest first (1 = the code you scanned last)
+  function chronologicalIndex() {
+    const map = new Map();
+    const total = order.length;
+    order.forEach((key, i) => map.set(key, total - i));
+    return map;
+  }
+
+  function toggleGroup(type) {
+    if (collapsedTypes.has(type)) collapsedTypes.delete(type);
+    else collapsedTypes.add(type);
+    renderList();
+  }
+
   function renderList() {
     countNumber.textContent = String(scans.size);
     exportBtn.disabled = scans.size === 0;
+    copyAllBtn.disabled = scans.size === 0;
     emptyState.hidden = scans.size !== 0;
 
+    const groups = groupEntries();
+    const isSearching = query.trim() !== "";
+    sheetToolbar.hidden = scans.size === 0;
+    noResults.hidden = scans.size === 0 || groups.length > 0;
+
+    const numbers = chronologicalIndex();
     scanList.innerHTML = "";
-    order.forEach((key, i) => {
-      const entry = scans.get(key);
-      const li = document.createElement("li");
-      li.className = "scan-row";
-      li.dataset.key = key;
 
-      const idx = document.createElement("div");
-      idx.className = "scan-index";
-      idx.textContent = String(order.length - i);
+    groups.forEach((group) => {
+      // While filtering, keep everything open so matches are actually visible
+      const collapsed = !isSearching && collapsedTypes.has(group.type);
 
-      const main = document.createElement("div");
-      main.className = "scan-main";
+      const header = document.createElement("li");
+      header.className = "group-header";
 
-      const val = document.createElement("div");
-      val.className = "scan-value";
-      val.textContent = entry.content;
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "group-toggle";
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      toggle.innerHTML = ICON_CHEVRON;
 
-      const meta = document.createElement("div");
-      meta.className = "scan-meta";
-      meta.innerHTML = metaHTML(entry);
+      const label = document.createElement("span");
+      label.className = "group-label";
+      label.textContent = group.label;
 
-      main.appendChild(val);
-      main.appendChild(meta);
+      const count = document.createElement("span");
+      count.className = "group-count";
+      count.textContent = String(group.items.length);
 
-      const copyBtn = document.createElement("button");
-      copyBtn.className = "copy-btn";
-      copyBtn.title = "Copy";
-      copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>';
-      copyBtn.addEventListener("click", () => copyToClipboard(entry.content));
+      toggle.appendChild(label);
+      toggle.appendChild(count);
+      toggle.addEventListener("click", () => toggleGroup(group.type));
 
-      li.appendChild(idx);
-      li.appendChild(main);
-      li.appendChild(copyBtn);
-      scanList.appendChild(li);
+      const copyGroup = document.createElement("button");
+      copyGroup.type = "button";
+      copyGroup.className = "group-copy";
+      copyGroup.title = `Copy ${group.label}`;
+      copyGroup.setAttribute("aria-label", `Copy ${group.label}`);
+      copyGroup.innerHTML = ICON_COPY;
+      copyGroup.addEventListener("click", () =>
+        copyToClipboard(group.items.map((e) => e.content).join("\n"))
+      );
+
+      header.appendChild(toggle);
+      header.appendChild(copyGroup);
+      scanList.appendChild(header);
+
+      if (collapsed) return;
+      group.items.forEach((entry) => {
+        scanList.appendChild(buildRow(entry, numbers.get(entry.content)));
+      });
     });
+  }
+
+  function buildRow(entry, index) {
+    const li = document.createElement("li");
+    li.className = "scan-row";
+    li.dataset.key = entry.content;
+
+    const idx = document.createElement("div");
+    idx.className = "scan-index";
+    idx.textContent = String(index);
+
+    const main = document.createElement("div");
+    main.className = "scan-main";
+
+    const val = document.createElement("div");
+    val.className = "scan-value";
+    val.textContent = entry.content;
+
+    const meta = document.createElement("div");
+    meta.className = "scan-meta";
+    meta.innerHTML = metaHTML(entry);
+
+    main.appendChild(val);
+    main.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    actions.appendChild(rowButton(ICON_COPY, "Copy", () => copyToClipboard(entry.content)));
+    actions.appendChild(rowButton(ICON_EDIT, "Edit", () => openEditor(entry.content)));
+    actions.appendChild(rowButton(ICON_DELETE, "Delete", () => deleteEntry(entry.content)));
+
+    li.appendChild(idx);
+    li.appendChild(main);
+    li.appendChild(actions);
+    return li;
+  }
+
+  function rowButton(icon, title, onClick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "copy-btn";
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+    btn.innerHTML = icon;
+    btn.addEventListener("click", onClick);
+    return btn;
   }
 
   function metaHTML(entry) {
@@ -342,6 +574,7 @@
     if (confirm(`Clear all ${scans.size} scanned codes?`)) {
       scans.clear();
       order = [];
+      saveSession();
       renderList();
     }
   });
@@ -365,15 +598,27 @@
     exportMenu.hidden = true;
   });
 
+  // Everything, ordered the way the list is grouped (type groups, then the
+  // current sort). Deliberately ignores the filter box so an export never
+  // silently drops codes the user has scanned.
+  function entriesForExport() {
+    const out = [];
+    TYPE_ORDER.forEach((type) => {
+      const items = order.map((k) => scans.get(k)).filter((e) => e.type === type);
+      if (items.length) out.push(...sortEntries(items));
+    });
+    return out;
+  }
+
   function exportData(format) {
-    const entries = order.map((k) => scans.get(k)).reverse(); // chronological
+    const entries = entriesForExport();
     let blob, filename;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 
     if (format === "csv") {
-      const rows = [["#", "content", "first_scanned", "times_seen"]];
+      const rows = [["#", "type", "content", "first_scanned", "times_seen"]];
       entries.forEach((e, i) => {
-        rows.push([i + 1, csvEscape(e.content), new Date(e.firstSeen).toISOString(), e.count]);
+        rows.push([i + 1, e.type, csvEscape(e.content), new Date(e.firstSeen).toISOString(), e.count]);
       });
       const csv = rows.map((r) => r.join(",")).join("\n");
       blob = new Blob([csv], { type: "text/csv" });
@@ -382,6 +627,8 @@
       const json = JSON.stringify(
         entries.map((e, i) => ({
           index: i + 1,
+          type: e.type,
+          typeLabel: TYPE_LABEL[e.type],
           content: e.content,
           firstScanned: new Date(e.firstSeen).toISOString(),
           timesSeen: e.count,
@@ -502,7 +749,102 @@
     });
   }
 
+  // ---------- Row actions: add / edit / delete ----------
+  let modalMode = null;
+
+  function openModal(mode, value) {
+    modalMode = mode;
+    modalTitle.textContent = mode.kind === "edit" ? "Edit code" : "Add a code";
+    modalInput.value = value || "";
+    modal.hidden = false;
+    modalInput.focus();
+    modalInput.select();
+  }
+
+  function closeModal() {
+    modal.hidden = true;
+    modalMode = null;
+  }
+
+  function openEditor(key) {
+    openModal({ kind: "edit", key }, key);
+  }
+
+  function submitModal() {
+    const value = modalInput.value.trim();
+    if (!value) return;
+
+    if (modalMode && modalMode.kind === "edit") {
+      const key = modalMode.key;
+      if (value === key) {
+        closeModal();
+        return;
+      }
+      if (scans.has(value)) {
+        showToast("That code is already saved", "dup");
+        return;
+      }
+      const entry = scans.get(key);
+      entry.content = value;
+      entry.type = detectType(value);
+      scans.delete(key);
+      scans.set(value, entry);
+      order = order.map((k) => (k === key ? value : k));
+      saveSession();
+      renderList();
+      closeModal();
+      showToast("Updated", "new");
+      return;
+    }
+
+    closeModal();
+    handleResult(value);
+  }
+
+  function deleteEntry(key) {
+    const entry = scans.get(key);
+    if (!entry) return;
+    if (!confirm(`Delete this code?\n\n${entry.content}`)) return;
+    scans.delete(key);
+    order = order.filter((k) => k !== key);
+    saveSession();
+    renderList();
+    showToast("Deleted", "dup");
+  }
+
+  addBtn.addEventListener("click", () => openModal({ kind: "add" }, ""));
+  modalCancel.addEventListener("click", closeModal);
+  modalSave.addEventListener("click", submitModal);
+  modalInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitModal();
+    } else if (e.key === "Escape") {
+      closeModal();
+    }
+  });
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // ---------- Filter / sort / bulk copy ----------
+  searchInput.addEventListener("input", () => {
+    query = searchInput.value;
+    renderList();
+  });
+
+  sortSelect.addEventListener("change", () => {
+    sortMode = sortSelect.value;
+    renderList();
+  });
+
+  copyAllBtn.addEventListener("click", () => {
+    if (scans.size === 0) return;
+    copyToClipboard(order.map((k) => scans.get(k).content).join("\n"));
+  });
+
   // ---------- Init ----------
+  loadSession();
   renderList();
   startCamera();
 })();

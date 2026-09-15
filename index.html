@@ -68,9 +68,24 @@
       <div id="sheet-heading">
         <h1 id="sheet-title">Scanned codes</h1>
         <div id="sheet-controls">
+          <button id="add-btn" class="icon-btn-sm" title="Add a code manually" aria-label="Add a code manually">
+            <svg viewBox="0 0 24 24" width="17" height="17"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round"/></svg>
+          </button>
+          <button id="copy-all-btn" class="icon-btn-sm" title="Copy all codes" aria-label="Copy all codes" disabled>
+            <svg viewBox="0 0 24 24" width="17" height="17"><rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+          </button>
           <button id="export-btn" class="btn btn-ghost" disabled>Export</button>
         </div>
       </div>
+    </div>
+
+    <div id="sheet-toolbar" hidden>
+      <input id="search-input" type="search" placeholder="Filter codes" autocomplete="off" spellcheck="false" aria-label="Filter codes" />
+      <select id="sort-select" aria-label="Sort codes">
+        <option value="recent">Recent</option>
+        <option value="count">Most seen</option>
+        <option value="az">A–Z</option>
+      </select>
     </div>
 
     <div id="export-menu" hidden>
@@ -84,8 +99,22 @@
       <p class="muted">Point the camera at a QR code — unique reads are saved here automatically.</p>
     </div>
 
+    <div id="no-results" hidden>No codes match your filter.</div>
+
     <ul id="scan-list"></ul>
   </section>
+
+  <!-- Add / edit dialog -->
+  <div id="modal" class="modal-backdrop" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h2 id="modal-title">Add a code</h2>
+      <input id="modal-input" type="text" autocomplete="off" spellcheck="false" placeholder="Code value" />
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn btn-ghost" type="button">Cancel</button>
+        <button id="modal-save" class="btn btn-accent" type="button">Save</button>
+      </div>
+    </div>
+  </div>
 
 </div>
 

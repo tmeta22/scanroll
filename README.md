@@ -9,9 +9,13 @@ plain text when you're done.
   API), with an automatic fallback to a bundled scanner (`jsQR`) on browsers
   that don't support it (notably iOS Safari) — on the fallback, pan across
   the sheet and each code is caught as it's centered.
+- Results are grouped by detected content type (links, emails, phone numbers,
+  WiFi, contacts, locations, JSON, numeric codes, text), with a filter box,
+  sort order, and per-row copy / edit / delete.
 - Works fully offline once installed (service worker caches all assets).
-- No backend, no accounts, no data leaves the phone — everything is stored
-  in memory for the session and only written to a file when you export.
+- No backend, no accounts, no data leaves the phone. The session is kept in
+  the browser's `localStorage` on your device, so a reload doesn't lose your
+  scans, and nothing is written to a file unless you export.
 
 ## Why you can't just open index.html directly
 
@@ -79,19 +83,39 @@ scanning logic before deploying to your phone.
 - The counter top-left shows how many **unique** codes you've captured.
 - New code → short buzz + green toast, added to the list.
 - Same code again → short buzz + amber toast, "seen ×N" updates on that row.
-- Drag the sheet at the bottom up to see the full list, or tap a row's
-  copy icon to copy one value.
-- **Export** (top of the sheet) gives you CSV, JSON, or plain text — saved
-  straight to your phone's downloads/files.
+
+Drag the sheet at the bottom up to work with the list:
+
+- **Grouped by type.** Each code is classified as you scan it and filed under
+  a collapsible group with a live count — Links, Emails, Phone numbers,
+  Messages, WiFi networks, Contacts, Locations, JSON, Numeric codes, Text.
+  Tap a group heading to collapse it, or its copy icon to copy just that
+  group's codes.
+- **Filter** box narrows the list as you type (groups with no match drop out).
+  While a filter is active, groups stay expanded so you can see the matches.
+- **Sort** applies inside each group: by most recent, most seen, or A–Z.
+- Each row has **copy**, **edit** (pencil, fixes a typo without rescanning),
+  and **delete** (trash, asks first) buttons.
+- The **+** button adds a code by hand — useful for a code the camera missed.
+- The **copy-all** button copies every code, one per line.
+- **Export** gives you CSV, JSON, or plain text. CSV and JSON include the
+  detected `type` for each code; all codes are exported in group order, even
+  if a filter is active, so an export never silently drops scans.
+- Your session survives a reload and a full app restart.
+
+Outside the sheet:
+
 - The flashlight icon (top-right, shown only if your device supports it)
   toggles the torch for scanning in low light.
-- **Clear** (top-right, trash icon) wipes the current session after
-  confirming.
+- **Clear** (top-right, trash icon) wipes the whole session after confirming.
 
 ## Customizing
 
 - `DETECT_INTERVAL` in `app.js` controls scan frequency (ms) — lower is
   faster but uses more battery.
+- Grouping rules live in `TYPES` and `detectType()` in `app.js`. Add an
+  entry to `TYPES` and a matching pattern in `detectType()` to get a new
+  group; the order of `TYPES` is the order groups appear in.
 - If your QR codes encode structured data (e.g. `id|name|value`), you can
   extend `handleResult()` in `app.js` to parse and display fields instead
   of the raw string.
